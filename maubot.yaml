@@ -1,0 +1,7 @@
+maubot: 0.1.0
+id: xyz.maubot.urandom
+version: 1.0.0
+license: MIT
+modules:
+- urandom
+main_class: RandomBot
