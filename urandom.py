@@ -27,6 +27,7 @@ from maubot import Plugin, MessageEvent
 from maubot.handlers import command
 
 Args = Dict[str, Union[bool, str]]
+rand = random.SystemRandom()
 
 
 def parse_args(args: str) -> Tuple[str, Args]:
@@ -38,6 +39,12 @@ def parse_args(args: str) -> Tuple[str, Args]:
 
 
 def parse_urange(val: str) -> Tuple[int, int]:
+    if "-" not in val:
+        if val.startswith("U+"):
+            char = int(val[2:], 16)
+        else:
+            char = _parse_urange_part(val)
+        return char, char
     if val.upper().startswith("U+"):
         start, end = val[2:].split("-")
         return int(start, 16), int(end, 16)
@@ -59,8 +66,6 @@ def _parse_urange_part(val: str) -> int:
 
 
 class RandomBot(Plugin):
-    rand = random.SystemRandom()
-
     @command.new("urandom")
     @command.argument("args", required=False, pass_raw=True, parser=parse_args)
     async def urandom(self, evt: MessageEvent, args: Args) -> None:
@@ -76,22 +81,22 @@ class RandomBot(Plugin):
             return
 
         if "alphabet" in args:
-            randomness = "".join(self.rand.choices(args["alphabet"], k=length))
+            randomness = "".join(rand.choices(args["alphabet"], k=length))
         elif "urange" in args:
             ranges: List[Tuple[int, int]] = []
             weights: List[int] = []
             try:
                 for urange in args["urange"].split(","):
                     start, end = parse_urange(urange.strip())
-                    ranges.append((start, end))
-                    weights.append(end - start)
+                    ranges.append((start, end + 1))
+                    weights.append(end - start + 1)
             except (KeyError, ValueError):
                 await evt.reply("Invalid unicode range")
                 self.log.exception("Invalid unicode range")
                 return
-            randomness = "".join(chr(self.rand.randrange(start, end + 1))
+            randomness = "".join(chr(rand.randrange(start, end))
                                  for start, end
-                                 in self.rand.choices(ranges, weights, k=length))
+                                 in rand.choices(ranges, weights, k=length))
         else:
             randomness = urandom(length)
 
@@ -114,7 +119,7 @@ class RandomBot(Plugin):
         if "topic" in args:
             await self.client.send_state_event(evt.room_id, EventType.ROOM_TOPIC,
                                                RoomTopicStateEventContent(topic=randomness))
-        elif "noreply" in args:
+        elif "noreply" in args or "noreplay" in args:
             await evt.respond(TextMessageEventContent(body=randomness, msgtype=MessageType.NOTICE))
         else:
             await evt.reply(TextMessageEventContent(body=randomness, msgtype=MessageType.NOTICE))
