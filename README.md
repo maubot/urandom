@@ -1,2 +1,2 @@
 # urandom
-A simple [maubot](https://github.com/maubot/maubot) that provides 64 bytes of data from /dev/urandom in base64.
+A [maubot](https://github.com/maubot/maubot) that generates random strings with /dev/urandom.

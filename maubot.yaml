@@ -3,5 +3,6 @@ id: xyz.maubot.urandom
 version: 1.0.0
 license: MIT
 modules:
+- base65536
 - urandom
-main_class: RandomBot
+main_class: urandom/RandomBot
