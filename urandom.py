@@ -69,6 +69,7 @@ class RandomBot(Plugin):
     @command.new("urandom")
     @command.argument("args", required=False, pass_raw=True, parser=parse_args)
     async def urandom(self, evt: MessageEvent, args: Args) -> None:
+        evt.disable_reply = "noreply" in args or "noreplay" in args or evt.disable_reply
         try:
             length = int(args["len"])
         except (KeyError, ValueError):
@@ -86,8 +87,13 @@ class RandomBot(Plugin):
             ranges: List[Tuple[int, int]] = []
             weights: List[int] = []
             try:
+                lim = range(0x110000)
                 for urange in args["urange"].split(","):
                     start, end = parse_urange(urange.strip())
+                    if start not in lim:
+                        raise ValueError("range start not in range(0x110000)")
+                    elif end not in lim:
+                        raise ValueError("range end not in range(0x110000)")
                     ranges.append((start, end + 1))
                     weights.append(end - start + 1)
             except (KeyError, ValueError):
@@ -119,7 +125,5 @@ class RandomBot(Plugin):
         if "topic" in args:
             await self.client.send_state_event(evt.room_id, EventType.ROOM_TOPIC,
                                                RoomTopicStateEventContent(topic=randomness))
-        elif "noreply" in args or "noreplay" in args:
-            await evt.respond(TextMessageEventContent(body=randomness, msgtype=MessageType.NOTICE))
         else:
             await evt.reply(TextMessageEventContent(body=randomness, msgtype=MessageType.NOTICE))
