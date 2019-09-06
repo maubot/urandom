@@ -79,7 +79,7 @@ Output format args:
 Other args:
 
 * `topic` - Set the result in the room topic instead of responding with a message.
-  Can be used with any output format.
+* `reply` - Reply to the command message instead of just sending a plain message.
 * `len=<int>` - The length of the string to generate.
 * `help[=<arg>]` - View this help page or the sub-help for a specific arg.
 """
