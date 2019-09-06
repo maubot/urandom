@@ -16,6 +16,7 @@
 from typing import Dict, Union, Tuple, List
 from base64 import b64encode, b16encode, b32encode, b85encode
 from os import urandom
+import unicodedata
 import random
 
 from base65536 import encode as b65536encode
@@ -65,11 +66,102 @@ def _parse_urange_part(val: str) -> int:
         return int(val)
 
 
+HELP = """**Usage:** `!urandom [args...]`
+
+Output format args:
+
+* `base=<base>` - The base to encode the random data in. Options: `raw`, `16`, `32`, `64`, `65536`.
+   The default is `base=64`.
+* `alphabet=<str>` - The set of characters to create a random string from.
+   Available options: `space=<chr>`, `shuffle`.
+* `urange=<range...>` - Unicode character range(s) to create a random string from.
+
+Other args:
+
+* `topic` - Set the result in the room topic instead of responding with a message.
+  Can be used with any output format.
+* `len=<int>` - The length of the string to generate.
+* `help[=<arg>]` - View this help page or the sub-help for a specific arg.
+"""
+
+HELP_BASE = """**Usage:** `!urandom base=<base> [len=<int>]`
+
+This is the default format if `alphabet` or `urange` isn't specified. The default is base64.
+In this mode, `len` specifies the number of bytes to generate, not the length of the output string.
+"""
+
+HELP_ALPHABET = """**Usage:** `!urandom alphabet=<str> [space=<char>] [shuffle] [len=<int>]`
+
+This format generates a random string using the letters in the given alphabet.
+
+If `shuffle` is specified, the given alphabet is shuffled instead. `len` is ignored when `shuffle`
+is used.
+
+As `<str>` can't contain spaces, you can use `space=<char>` to replace all instances of `<char>`
+with a space in the alphabet before generating the string.
+"""
+
+HELP_URANGE = """**Usage:** `!urandom urange=<range...> [len=<int>]`
+
+This format generates a random string using the given unicode codepoint ranges.
+
+`<range...>` is a comma-separated list. Each `range` consists of one or two `part`s. If there are
+two `part`s, they're separated by a dash (`-`). Each `part` can be: a hex value prefixed by `0x`, a
+binary value prefixed by `0b`, a python unicode escape (prefixed by `\\u`), a single character or an
+unprefixed base-10 value. Additionally, `part` may be a hex value prefixed by `U+`, but in that
+case, the second `part` is not prefixed (e.g. `U+0061-007A`)
+"""
+
+HELP_TOPIC = """**Usage:** `!urandom topic [args...]`
+
+This flag makes urandom set the topic to the output string instead of sending a new message with the
+output string. It can be used in combination with any output format.
+"""
+
+HELP_LEN = """**Usage:** `!urandom len=<int> [args...]`
+
+This flag sets the length of the randomized data. For the `base` output format, this specifies the
+length of the random bytes. For other formats, this specifies the length of the output string.
+"""
+
+HELP_HELP = """**Usage:** `!urandom help[=<arg>]`
+
+View help for a specific argument. Currently, there are help pages for `base`, `alphabet`, `urange`,
+`topic`, `len` and `help`.
+
+Help/command syntax:
+
+* `raw text`.
+* `<required argument>`.
+* `[optional block/argument]`. If an optional block contains a required argument, the rest of the
+   optional block is treated as raw text instead of an argument.
+* `argument...` - A list of items.
+"""
+
+HELP_UNKNOWN = "See `!urandom help=help` for help on how to use the help command."
+
+helps = {
+    True: HELP,
+    "base": HELP_BASE,
+    "alphabet": HELP_ALPHABET,
+    "urange": HELP_URANGE,
+    "topic": HELP_TOPIC,
+    "len": HELP_LEN,
+    "help": HELP_HELP,
+}
+
+DEFAULT_LENGTH = 64
+DEFAULT_BASE = "64"
+
+
 class RandomBot(Plugin):
     @command.new("urandom")
     @command.argument("args", required=False, pass_raw=True, parser=parse_args)
     async def urandom(self, evt: MessageEvent, args: Args) -> None:
-        evt.disable_reply = "noreply" in args or "noreplay" in args or evt.disable_reply
+        evt.disable_reply = "reply" not in args and "replay" not in args
+        if "help" in args:
+            await evt.reply(helps.get(args["help"], HELP_UNKNOWN))
+            return
         try:
             length = int(args["len"])
         except (KeyError, ValueError):
@@ -82,7 +174,15 @@ class RandomBot(Plugin):
             return
 
         if "alphabet" in args:
-            randomness = "".join(rand.choices(args["alphabet"], k=length))
+            alphabet = args["alphabet"]
+            if "space" in args:
+                alphabet = alphabet.replace(args["space"], " ")
+            if "permutation" in args or "shuffle" in args:
+                data = list(alphabet)
+                rand.shuffle(data)
+                randomness = "".join(data)
+            else:
+                randomness = "".join(rand.choices(alphabet, k=length or DEFAULT_LENGTH))
         elif "urange" in args:
             ranges: List[Tuple[int, int]] = []
             weights: List[int] = []
@@ -90,6 +190,11 @@ class RandomBot(Plugin):
                 lim = range(0x110000)
                 for urange in args["urange"].split(","):
                     start, end = parse_urange(urange.strip())
+                    if start == 0 or end == 0:
+                        await evt.reply(
+                            'Exception in thread "main" java.lang.NullPointerException  \n'
+                            '    at Tester.main(Urandom.java:194)')
+                        return
                     if start not in lim:
                         raise ValueError("range start not in range(0x110000)")
                     elif end not in lim:
@@ -102,11 +207,11 @@ class RandomBot(Plugin):
                 return
             randomness = "".join(chr(rand.randrange(start, end))
                                  for start, end
-                                 in rand.choices(ranges, weights, k=length))
+                                 in rand.choices(ranges, weights, k=length or DEFAULT_LENGTH))
         else:
-            randomness = urandom(length)
+            randomness = urandom(length or DEFAULT_LENGTH)
 
-            base = args.get("base", "64")
+            base = args.get("base", DEFAULT_BASE)
             if base == "raw":
                 randomness = str(randomness)
             elif base == "16" or base == "hex":
@@ -121,6 +226,8 @@ class RandomBot(Plugin):
                 randomness = b65536encode(randomness)
             else:
                 await evt.reply("Unknown base")
+        if [c for c in randomness if unicodedata.category(c) == "Cc"]:
+            await evt.reply("Output contains non-printable characters")
 
         if "topic" in args:
             await self.client.send_state_event(evt.room_id, EventType.ROOM_TOPIC,
