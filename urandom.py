@@ -216,7 +216,7 @@ class RandomBot(Plugin):
                     if start == 0 or end == 0:
                         await evt.reply(
                             'Exception in thread "main" java.lang.NullPointerException  \n'
-                            '    at Tester.main(Urandom.java:216)')
+                            '    at Urandom.handle_command(Urandom.java:216)')
                         return
                     if start not in lim:
                         raise ValueError("range start not in range(0x110000)")
