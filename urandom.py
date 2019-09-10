@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Dict, Union, Tuple, List
 from base64 import b64encode, b16encode, b32encode, b85encode
-from os import urandom
+from os import urandom as sys_urandom
 import unicodedata
 import random
 
@@ -28,7 +28,7 @@ from maubot import Plugin, MessageEvent
 from maubot.handlers import command
 
 Args = Dict[str, Union[bool, str]]
-rand = random.SystemRandom()
+sys_rand = random.SystemRandom()
 
 
 def parse_args(args: str) -> Tuple[str, Args]:
@@ -81,6 +81,7 @@ Other args:
 * `topic` - Set the result in the room topic instead of responding with a message.
 * `reply` - Reply to the command message instead of just sending a plain message.
 * `len=<int>` - The length of the string to generate.
+* `seed[=<int>]` - The seed for the PRNG.
 * `help[=<arg>]` - View this help page or the sub-help for a specific arg.
 """
 
@@ -88,6 +89,8 @@ HELP_BASE = """**Usage:** `!urandom base=<base> [len=<int>]`
 
 This is the default format if `alphabet` or `urange` isn't specified. The default is base64.
 In this mode, `len` specifies the number of bytes to generate, not the length of the output string.
+
+Currently available bases: `raw` (python hex encoding), `16`, `32`, `64`, `65536`.
 """
 
 HELP_ALPHABET = """**Usage:** `!urandom alphabet=<str> [space=<char>] [shuffle] [len=<int>]`
@@ -124,6 +127,14 @@ This flag sets the length of the randomized data. For the `base` output format, 
 length of the random bytes. For other formats, this specifies the length of the output string.
 """
 
+HELP_SEED = """**Usage:** `!urandom seed[=<int>] [args...]`
+
+This flag sets the seed for the pseudo-random number generator. If the flag is not specified, the
+system's `/dev/urandom` is used. If the flag is specified without a value, the maubot-wide PRNG is
+used. If the flag is specified with a value, a new PRNG is initialized for the duration of the
+command.
+"""
+
 HELP_HELP = """**Usage:** `!urandom help[=<arg>]`
 
 View help for a specific argument. Currently, there are help pages for `base`, `alphabet`, `urange`,
@@ -147,6 +158,7 @@ helps = {
     "urange": HELP_URANGE,
     "topic": HELP_TOPIC,
     "len": HELP_LEN,
+    "seed": HELP_SEED,
     "help": HELP_HELP,
 }
 
@@ -173,6 +185,17 @@ class RandomBot(Plugin):
             await evt.reply("Invalid length")
             return
 
+        rand = sys_rand
+        if "seed" in args:
+            if args["seed"] == True:
+                rand = random
+            else:
+                try:
+                    rand = random.Random(int(args["seed"]))
+                except ValueError:
+                    await evt.reply("Invalid seed")
+                    return
+
         if "alphabet" in args:
             alphabet = args["alphabet"]
             if "space" in args:
@@ -193,7 +216,7 @@ class RandomBot(Plugin):
                     if start == 0 or end == 0:
                         await evt.reply(
                             'Exception in thread "main" java.lang.NullPointerException  \n'
-                            '    at Tester.main(Urandom.java:194)')
+                            '    at Tester.main(Urandom.java:216)')
                         return
                     if start not in lim:
                         raise ValueError("range start not in range(0x110000)")
@@ -209,6 +232,8 @@ class RandomBot(Plugin):
                                  for start, end
                                  in rand.choices(ranges, weights, k=length or DEFAULT_LENGTH))
         else:
+            urandom = (sys_urandom if rand == sys_rand
+                       else lambda n: bytes(rand.randint(0, 255) for i in range(n)))
             randomness = urandom(length or DEFAULT_LENGTH)
 
             base = args.get("base", DEFAULT_BASE)
