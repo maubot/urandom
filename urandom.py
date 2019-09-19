@@ -16,7 +16,6 @@
 from typing import Dict, Union, Tuple, List
 from base64 import b64encode, b16encode, b32encode, b85encode
 from os import urandom as sys_urandom
-import unicodedata
 import random
 
 from base65536 import encode as b65536encode
@@ -29,6 +28,10 @@ from maubot.handlers import command
 
 Args = Dict[str, Union[bool, str]]
 sys_rand = random.SystemRandom()
+
+DEFAULT_LENGTH = 64
+MAX_LENGTH = 512
+DEFAULT_BASE = "64"
 
 
 def parse_args(args: str) -> Tuple[str, Args]:
@@ -121,10 +124,12 @@ This flag makes urandom set the topic to the output string instead of sending a 
 output string. It can be used in combination with any output format.
 """
 
-HELP_LEN = """**Usage:** `!urandom len=<int> [args...]`
+HELP_LEN = f"""**Usage:** `!urandom len=<int> [args...]`
 
 This flag sets the length of the randomized data. For the `base` output format, this specifies the
 length of the random bytes. For other formats, this specifies the length of the output string.
+
+The maximum length is {MAX_LENGTH}.
 """
 
 HELP_SEED = """**Usage:** `!urandom seed[=<int>] [args...]`
@@ -162,9 +167,6 @@ helps = {
     "help": HELP_HELP,
 }
 
-DEFAULT_LENGTH = 64
-DEFAULT_BASE = "64"
-
 
 class RandomBot(Plugin):
     @command.new("urandom")
@@ -177,8 +179,8 @@ class RandomBot(Plugin):
         try:
             length = int(args["len"])
         except (KeyError, ValueError):
-            length = 64
-        if length > 512:
+            length = DEFAULT_LENGTH
+        if length > MAX_LENGTH:
             await evt.reply("Too high length")
             return
         elif length < 0:
@@ -251,8 +253,6 @@ class RandomBot(Plugin):
                 randomness = b65536encode(randomness)
             else:
                 await evt.reply("Unknown base")
-        if [c for c in randomness if unicodedata.category(c) == "Cc"]:
-            await evt.reply("Output contains non-printable characters")
 
         if "topic" in args:
             await self.client.send_state_event(evt.room_id, EventType.ROOM_TOPIC,
